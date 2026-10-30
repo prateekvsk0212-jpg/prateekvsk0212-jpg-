@@ -1,0 +1,9 @@
+.env
+node_modules/
+history.json
+*.backup
+*.before-search
+
+*.before-speech
+*.pre-tts
+*.voice-backup
