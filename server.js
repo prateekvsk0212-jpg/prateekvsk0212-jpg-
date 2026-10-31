@@ -39,10 +39,10 @@ app.post("/api/chat", async (req, res) => {
 
     const history = await getHistory();
     const completion = await client.chat.completions.create({
-      tools: [{ type: "browser_search" }],
+      
       model: "openai/gpt-oss-20b",
       messages: [
-        { role: "system", content: "Your name is August AI. You were created by Prateek Agrahari. In Hindi, write the creator name exactly as प्रतीक अग्रहरी. In Hindi, write the creator name exactly as प्रतीक अग्रहरी. When asked who you are, introduce yourself as Hello! I am August AI, an AI chatbot created by Prateek Agrahari. Never claim your name is ChatGPT. Be honest about being an AI chatbot powered by an AI model." },
+        { role: "system", content: "Your name is August AI. You were created by Prateek Agrahari (प्रतीक अग्रहरी). If asked who created you, clearly say: I was created by Prateek Agrahari (प्रतीक अग्रहरी). Be friendly, natural, concise, and empathetic. Answer in the user's language. Prefer plain text and short paragraphs. Avoid unnecessary Markdown tables, headings, asterisks, and decorative symbols. Never claim to be ChatGPT. Be honest about your capabilities." },
         ...history,
         { role: "user", content: message }
       ]
@@ -63,6 +63,5 @@ app.post("/api/chat", async (req, res) => {
   }
 });
 
-app.listen(3000, "127.0.0.1", () => {
-  console.log("Chatbot server running at http://127.0.0.1:3000");
-});
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, "0.0.0.0", () => console.log(`August AI running on port ${PORT}`));

@@ -17,6 +17,26 @@ input{flex:1;min-width:0;padding:12px;border:1px solid #bbb;border-radius:8px}
 button{padding:12px;border:0;border-radius:8px;background:#1769e0;color:white}
 #delete{background:#c62828;margin-top:10px}
 #status{color:#555;font-size:14px}
+
+.msg button[title="Listen to this message"] {
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  border-radius: 50%;
+  border: 1px solid #cbd5e1;
+  background: #e8f0ff;
+  color: #1d4ed8;
+  font-size: 18px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 6px;
+}
+.msg button[title="Listen to this message"]:active {
+  transform: scale(0.94);
+}
+
 </style>
 </head>
 <body>
@@ -45,13 +65,27 @@ function addMessage(role, text) {
     ttsButton.textContent = '🔊';
     ttsButton.title = 'Listen to this message';
     ttsButton.addEventListener('click', () => {
-      if (!('speechSynthesis' in window)) {
-        alert('Speech playback is not supported in this browser.');
+      if (!('speechSynthesis' in window)) return;
+      if (window.activeTtsButton === ttsButton) {
+        window.speechSynthesis.cancel();
+        window.activeTtsButton = null;
+        ttsButton.textContent = '🔊';
         return;
       }
       window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance((role === "user" ? "You: " : "AI: ") + text);
+      document.querySelectorAll('.msg button').forEach(b => {
+        if (b.title === 'Listen to this message') b.textContent = '🔊';
+      });
+      const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = 'hi-IN';
+      window.activeTtsButton = ttsButton;
+      ttsButton.textContent = '⏹';
+      utterance.onend = utterance.onerror = () => {
+        if (window.activeTtsButton === ttsButton) {
+          window.activeTtsButton = null;
+          ttsButton.textContent = '🔊';
+        }
+      };
       window.speechSynthesis.speak(utterance);
     });
     div.appendChild(ttsButton);
