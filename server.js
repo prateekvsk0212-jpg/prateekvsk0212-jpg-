@@ -25,6 +25,19 @@ app.get("/api/history", async (req, res) => {
   res.json(await getHistory());
 });
 
+app.delete("/api/history/:index", async (req, res) => {
+  const index = Number(req.params.index);
+  const history = await getHistory();
+
+  if (!Number.isInteger(index) || index < 0 || index >= history.length) {
+    return res.status(404).json({ error: "Message not found" });
+  }
+
+  history.splice(index, 1);
+  await writeFile(HISTORY_FILE, JSON.stringify(history, null, 2));
+  res.json({ message: "Message deleted" });
+});
+
 app.delete("/api/history", async (req, res) => {
   await writeFile(HISTORY_FILE, "[]");
   res.json({ message: "Chat history deleted" });

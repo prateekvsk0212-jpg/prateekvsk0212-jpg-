@@ -56,39 +56,61 @@ button{padding:12px;border:0;border-radius:8px;background:#1769e0;color:white}
 const messages = document.getElementById("messages");
 const statusText = document.getElementById("status");
 
-function addMessage(role, text) {
+function addMessage(role, text, historyIndex = null) {
   const div = document.createElement("div");
   div.className = "msg " + (role === "user" ? "user" : "ai");
-  div.textContent = (role === "user" ? "You: " : "AI: ") + text;
-    const ttsButton = document.createElement('button');
-    ttsButton.type = 'button';
-    ttsButton.textContent = '🔊';
-    ttsButton.title = 'Listen to this message';
-    ttsButton.addEventListener('click', () => {
-      if (!('speechSynthesis' in window)) return;
-      if (window.activeTtsButton === ttsButton) {
-        window.speechSynthesis.cancel();
-        window.activeTtsButton = null;
-        ttsButton.textContent = '🔊';
-        return;
-      }
+
+  const label = document.createElement("span");
+  label.textContent = (role === "user" ? "You: " : "AI: ") + text;
+  div.appendChild(label);
+
+  const ttsButton = document.createElement("button");
+  ttsButton.type = "button";
+  ttsButton.textContent = "🔊";
+  ttsButton.title = "Listen to this message";
+  ttsButton.addEventListener("click", () => {
+    if (!("speechSynthesis" in window)) return;
+    if (window.activeTtsButton === ttsButton) {
       window.speechSynthesis.cancel();
-      document.querySelectorAll('.msg button').forEach(b => {
-        if (b.title === 'Listen to this message') b.textContent = '🔊';
-      });
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'hi-IN';
-      window.activeTtsButton = ttsButton;
-      ttsButton.textContent = '⏹';
-      utterance.onend = utterance.onerror = () => {
-        if (window.activeTtsButton === ttsButton) {
-          window.activeTtsButton = null;
-          ttsButton.textContent = '🔊';
-        }
-      };
-      window.speechSynthesis.speak(utterance);
+      window.activeTtsButton = null;
+      ttsButton.textContent = "🔊";
+      return;
+    }
+    window.speechSynthesis.cancel();
+    document.querySelectorAll('.msg button[title="Listen to this message"]').forEach(b => b.textContent = "🔊");
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "hi-IN";
+    window.activeTtsButton = ttsButton;
+    ttsButton.textContent = "⏹";
+    utterance.onend = utterance.onerror = () => {
+      if (window.activeTtsButton === ttsButton) {
+        window.activeTtsButton = null;
+        ttsButton.textContent = "🔊";
+      }
+    };
+    window.speechSynthesis.speak(utterance);
+  });
+  div.appendChild(ttsButton);
+
+  if (historyIndex !== null) {
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.textContent = "🗑️ Delete";
+    deleteButton.style.background = "#c62828";
+    deleteButton.addEventListener("click", async () => {
+      if (!confirm("Delete this message?")) return;
+      try {
+        const response = await fetch("/api/history/" + historyIndex, { method: "DELETE" });
+        if (!response.ok) throw new Error("Could not delete message");
+        await loadHistory();
+        statusText.textContent = "Message deleted";
+      } catch (error) {
+        statusText.textContent = "Error: " + error.message;
+      }
     });
-    div.appendChild(ttsButton);
+    div.appendChild(deleteButton);
+  }
+
   messages.appendChild(div);
   messages.scrollTop = messages.scrollHeight;
 }
@@ -98,7 +120,7 @@ async function loadHistory() {
     const res = await fetch("/api/history");
     const history = await res.json();
     messages.innerHTML = "";
-    history.forEach(item => addMessage(item.role, item.content));
+    history.forEach((item, index) => addMessage(item.role, item.content, index));
   } catch {
     statusText.textContent = "Could not load history";
   }
