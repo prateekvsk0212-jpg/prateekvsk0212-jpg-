@@ -16,6 +16,7 @@ form{display:flex;gap:8px;margin-top:12px}
 input{flex:1;min-width:0;padding:12px;border:1px solid #bbb;border-radius:8px}
 button{padding:12px;border:0;border-radius:8px;background:#1769e0;color:white}
 #delete{background:#c62828;margin-top:10px}
+#photoBtn{padding:10px;background:#e8f0ff;color:#1769e0;font-size:20px;min-width:44px} #selectDelete,#deleteSelected{margin-top:8px}
 #status{color:#555;font-size:14px}
 
 .msg button[title="Listen to this message"] {
@@ -37,6 +38,58 @@ button{padding:12px;border:0;border-radius:8px;background:#1769e0;color:white}
   transform: scale(0.94);
 }
 
+
+/* New August AI input bar */
+#form{position:sticky;bottom:0;z-index:20;display:flex;align-items:center;gap:8px;padding:12px;background:#fff;border:1px solid #dce3ed;border-radius:22px;box-shadow:0 4px 20px #00000012;margin:12px 0}
+#message{flex:1;min-width:0;width:100%;padding:13px 14px;border:0;outline:none;border-radius:18px;background:#f1f4f9;font-size:16px;color:#172033}
+#form button{flex-shrink:0;border:0;border-radius:15px;padding:11px 13px;font-size:17px;cursor:pointer}
+#photoBtn,#voiceBtn{background:#eaf1ff;color:#245bd6}
+#liveTalkBtn{background:#e8f8ef;color:#187647;font-size:14px!important}
+#form button[type=submit]{background:#1769e0;color:white;font-weight:600}
+@media(max-width:480px){#form{gap:5px;padding:8px;border-radius:18px}#form button{padding:10px 9px}#liveTalkBtn{font-size:12px!important}}
+
+
+/* Make message input larger */
+#form{flex-wrap:nowrap!important;align-items:center!important}
+#message{
+  order:1!important;flex:1 1 auto!important;
+  width:100%!important;min-width:0!important;
+  min-height:56px!important;box-sizing:border-box!important;
+  padding:16px!important;font-size:17px!important;
+}
+#photoBtn{order:2!important}
+#voiceBtn{order:3!important}
+#liveTalkBtn{order:4!important}
+#form button[type=submit]{order:5!important}
+
+
+/* August AI ChatGPT-inspired composer */
+#form{
+  display:grid!important;
+  grid-template-columns:42px 42px minmax(0,1fr) auto!important;
+  grid-template-areas:"message message message message" "photo voice live send"!important;
+  gap:8px!important;align-items:center!important;
+  padding:12px!important;margin:12px 0!important;
+  background:#fff!important;border:1px solid #d9d9e3!important;
+  border-radius:28px!important;box-shadow:0 2px 8px #0000000c!important;
+}
+#message{
+  grid-area:message!important;width:100%!important;min-width:0!important;
+  min-height:90px!important;box-sizing:border-box!important;
+  padding:8px 6px!important;margin:0!important;resize:vertical!important;
+  border:0!important;outline:none!important;box-shadow:none!important;
+  background:transparent!important;border-radius:0!important;
+  color:#222!important;font-size:16px!important;line-height:1.5!important;
+}
+#photoBtn{grid-area:photo!important}
+#voiceBtn{grid-area:voice!important}
+#liveTalkBtn{grid-area:live!important;white-space:nowrap!important}
+#form button[type=submit]{grid-area:send!important}
+#form button{min-height:42px!important;border:0!important;border-radius:22px!important}
+#photoBtn,#voiceBtn{background:#f1f1f1!important;color:#222!important}
+#liveTalkBtn{background:#e8f5ec!important;color:#176b3a!important;font-size:12px!important}
+#form button[type=submit]{background:#171717!important;color:white!important}
+
 </style>
 </head>
 <body>
@@ -46,14 +99,29 @@ button{padding:12px;border:0;border-radius:8px;background:#1769e0;color:white}
 <p id="status">Ready to chat</p>
 <form id="form">
 <input id="message" placeholder="Type your message..." autocomplete="off" required>
+<input id="photo" type="file" accept="image/*" hidden>
+<button type="button" id="photoBtn" title="Attach photo">📎</button>
 <button type="button" id="voiceBtn">🎤</button>
+<button type="button" id="liveTalkBtn" title="Start Live Talk">🎙️ Live Talk</button>
 
 <button type="submit">Send</button>
 </form>
+<button id="selectDelete" type="button">☑️ Select messages to delete</button>
+<button id="deleteSelected" type="button" hidden>🗑️ Delete selected</button>
 <button id="delete">Delete Chat History</button>
 </main>
 <script>
 const messages = document.getElementById("messages");
+document.getElementById("photoBtn")?.addEventListener("click", () => {
+    document.getElementById("photo").click();
+  });
+  document.getElementById("photo")?.addEventListener("change", () => {
+    const file = document.getElementById("photo").files[0];
+    if (file) {
+      document.getElementById("message").placeholder = "Is photo ke baare mein kya poochna hai?";
+      statusText.textContent = "Photo selected. Ab apna sawal likho aur Send dabao.";
+    }
+  });
 const statusText = document.getElementById("status");
 
 function addMessage(role, text, historyIndex = null) {
@@ -63,6 +131,14 @@ function addMessage(role, text, historyIndex = null) {
   const label = document.createElement("span");
   label.textContent = (role === "user" ? "You: " : "AI: ") + text;
   div.appendChild(label);
+  if (historyIndex !== null) {
+    const selectionBox = document.createElement("input");
+    selectionBox.type = "checkbox";
+    selectionBox.className = "selectionBox";
+    selectionBox.dataset.index = historyIndex;
+    selectionBox.hidden = true;
+    div.prepend(selectionBox);
+  }
 
   const ttsButton = document.createElement("button");
   ttsButton.type = "button";
@@ -115,6 +191,38 @@ function addMessage(role, text, historyIndex = null) {
   messages.scrollTop = messages.scrollHeight;
 }
 
+document.getElementById("selectDelete").addEventListener("click", () => {
+  const boxes = document.querySelectorAll(".selectionBox");
+  const selecting = boxes.length > 0 && boxes[0].hidden;
+  boxes.forEach(box => box.hidden = !selecting);
+  document.getElementById("deleteSelected").hidden = !selecting;
+  document.getElementById("selectDelete").textContent =
+    selecting ? "☑️ Cancel selection" : "☑️ Select messages to delete";
+});
+
+document.getElementById("deleteSelected").addEventListener("click", async () => {
+  const indexes = [...document.querySelectorAll(".selectionBox:checked")]
+    .map(box => Number(box.dataset.index))
+    .sort((a, b) => b - a);
+  if (!indexes.length) {
+    statusText.textContent = "Pehle messages select karo.";
+    return;
+  }
+  if (!confirm(indexes.length + " selected messages delete karein?")) return;
+  try {
+    for (const index of indexes) {
+      const res = await fetch("/api/history/" + index, { method: "DELETE" });
+      if (!res.ok) throw new Error("Delete failed");
+    }
+    await loadHistory();
+    document.getElementById("deleteSelected").hidden = true;
+    document.getElementById("selectDelete").textContent = "☑️ Select messages to delete";
+    statusText.textContent = "Selected messages deleted";
+  } catch (error) {
+    statusText.textContent = "Error: " + error.message;
+  }
+});
+
 async function loadHistory() {
   try {
     const res = await fetch("/api/history");
@@ -129,16 +237,35 @@ async function loadHistory() {
 document.getElementById("form").addEventListener("submit", async event => {
   event.preventDefault();
   const input = document.getElementById("message");
-  const message = input.value.trim();
-  if (!message) return;
+  let message = input.value.trim();
+  const photo = document.getElementById("photo").files[0];
+  if (!message && !photo) {
+    statusText.textContent = "Apna sawal likho ya photo select karo.";
+    return;
+  }
+  if (!message && photo) message = "Is photo ko dekho aur batao ismein kya hai.";
+  let image = "";
+  if (photo) {
+    if (photo.size > 5 * 1024 * 1024) {
+      statusText.textContent = "Photo 5 MB se chhoti honi chahiye.";
+      return;
+    }
+    image = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(photo);
+    });
+  }
   addMessage("user", message);
   input.value = "";
+  document.getElementById("photo").value = "";
   statusText.textContent = "AI is thinking...";
   try {
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({message})
+      body: JSON.stringify({message, image})
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Request failed");
@@ -185,6 +312,106 @@ if (voiceBtn) {
     recognition.start();
   });
 }
+
+
+/* AugustLiveTalk */
+(() => {
+  const btn = document.getElementById("liveTalkBtn");
+  const status = document.getElementById("status");
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  if (!btn) return;
+  let active = false, busy = false, recognition = null;
+
+  btn.addEventListener("click", () => {
+    if (active) {
+      active = false;
+      busy = false;
+      if (recognition) recognition.abort();
+      window.speechSynthesis.cancel();
+      btn.textContent = "🎙️ Live Talk";
+      status.textContent = "Live Talk stopped";
+      return;
+    }
+
+    if (!SpeechRecognition) {
+      status.textContent = "Live Talk ke liye Chrome browser use karo.";
+      return;
+    }
+
+    active = true;
+    btn.textContent = "⏹️ Stop Talk";
+    status.textContent = "Listening... permission allow karo.";
+
+    recognition = new SpeechRecognition();
+    recognition.lang = "hi-IN";
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
+    recognition.onresult = async (event) => {
+      const spoken = event.results[event.results.length - 1][0].transcript.trim();
+      if (!spoken || busy || !active) return;
+      busy = true;
+      status.textContent = "August AI is thinking...";
+      addMessage("user", spoken);
+
+      try {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: spoken })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Request failed");
+        addMessage("assistant", data.answer);
+        status.textContent = "August AI is speaking...";
+
+        await new Promise(resolve => {
+          const utterance = new SpeechSynthesisUtterance(data.answer);
+          utterance.lang = /[\u0900-\u097F]/.test(data.answer) ? "hi-IN" : "en-IN";
+          utterance.onend = resolve;
+          utterance.onerror = resolve;
+          window.speechSynthesis.speak(utterance);
+        });
+      } catch (error) {
+        status.textContent = "Error: " + error.message;
+      } finally {
+        busy = false;
+        if (active) {
+          status.textContent = "Listening... bolo.";
+          setTimeout(() => {
+            if (active && !busy) {
+              try { recognition.start(); } catch {}
+            }
+          }, 350);
+        }
+      }
+    };
+
+    recognition.onerror = (event) => {
+      if (active && event.error !== "aborted" && event.error !== "no-speech") {
+        status.textContent = "Mic error: " + event.error;
+      }
+    };
+
+    recognition.onend = () => {
+      if (active && !busy) {
+        setTimeout(() => {
+          if (active && !busy) {
+            try { recognition.start(); } catch {}
+          }
+        }, 500);
+      }
+    };
+
+    try { recognition.start(); }
+    catch (error) {
+      active = false;
+      btn.textContent = "🎙️ Live Talk";
+      status.textContent = "Mic start nahi hua: " + error.message;
+    }
+  });
+})();
 
 </script>
 

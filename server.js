@@ -10,7 +10,7 @@ const client = new OpenAI({
 });
 const HISTORY_FILE = "./history.json";
 
-app.use(express.json());
+app.use(express.json({ limit: "8mb" }));
 app.use(express.static("public"));
 
 async function getHistory() {
@@ -46,6 +46,7 @@ app.delete("/api/history", async (req, res) => {
 app.post("/api/chat", async (req, res) => {
   try {
     const message = String(req.body.message || "").trim();
+    const image = typeof req.body.image === "string" ? req.body.image : "";
     if (!message) {
       return res.status(400).json({ error: "Message is empty" });
     }
@@ -53,11 +54,11 @@ app.post("/api/chat", async (req, res) => {
     const history = await getHistory();
     const completion = await client.chat.completions.create({
       
-      model: "openai/gpt-oss-20b",
+      model: req.body.image ? "qwen/qwen3.8-27b" : "openai/gpt-oss-20b",
       messages: [
         { role: "system", content: "Your name is August AI. You were created by Prateek Agrahari (प्रतीक अग्रहरी). If asked who created you, clearly say: I was created by Prateek Agrahari (प्रतीक अग्रहरी). Be friendly, natural, concise, and empathetic. Answer in the user's language. Prefer plain text and short paragraphs. Avoid unnecessary Markdown tables, headings, asterisks, and decorative symbols. Never claim to be ChatGPT. Be honest about your capabilities." },
         ...history,
-        { role: "user", content: message }
+        { role: "user", content: image ? [{ type: "text", text: message }, { type: "image_url", image_url: { url: image } }] : message }
       ]
     });
 

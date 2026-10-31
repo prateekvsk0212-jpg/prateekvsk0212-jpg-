@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>August AI</title>
+<style>
+body{font-family:Arial,sans-serif;background:#f2f4f8;margin:0;padding:16px}
+main{max-width:650px;margin:auto;background:white;padding:16px;border-radius:16px}
+h2{text-align:center}
+#messages{height:55vh;overflow-y:auto;border:1px solid #ddd;border-radius:10px;padding:10px}
+.msg{padding:10px;margin:8px 0;border-radius:10px;white-space:pre-wrap;overflow-wrap:anywhere}
+.user{background:#dcecff}
+.ai{background:#eee}
+form{display:flex;gap:8px;margin-top:12px}
+input{flex:1;min-width:0;padding:12px;border:1px solid #bbb;border-radius:8px}
+button{padding:12px;border:0;border-radius:8px;background:#1769e0;color:white}
+#delete{background:#c62828;margin-top:10px}
+#photoBtn{padding:10px;background:#e8f0ff;color:#1769e0;font-size:20px;min-width:44px} #selectDelete,#deleteSelected{margin-top:8px}
+#status{color:#555;font-size:14px}
+
+.msg button[title="Listen to this message"] {
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  border-radius: 50%;
+  border: 1px solid #cbd5e1;
+  background: #e8f0ff;
+  color: #1d4ed8;
+  font-size: 18px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 6px;
+}
+.msg button[title="Listen to this message"]:active {
+  transform: scale(0.94);
+}
+
+</style>
+</head>
+<body>
+<main>
+<h2>August AI</h2>
+<div id="messages"></div>
+<p id="status">Ready to chat</p>
+<form id="form">
+<input id="message" placeholder="Type your message..." autocomplete="off" required>
+<input id="photo" type="file" accept="image/*" hidden>
+<button type="button" id="photoBtn" title="Attach photo">📎</button>
+<button type="button" id="voiceBtn">🎤</button>
+<button type="button" id="liveTalkBtn" title="Start Live Talk">🎙️ Live Talk</button>
+
+<button type="submit">Send</button>
+</form>
+<button id="selectDelete" type="button">☑️ Select messages to delete</button>
+<button id="deleteSelected" type="button" hidden>🗑️ Delete selected</button>
+<button id="delete">Delete Chat History</button>
+</main>
+<script>
+const messages = document.getElementById("messages");
+document.getElementById("photoBtn")?.addEventListener("click", () => document.getElementById("photo").click());
+const statusText = document.getElementById("status");
+
+function addMessage(role, text, historyIndex = null) {
+  const div = document.createElement("div");
+  div.className = "msg " + (role === "user" ? "user" : "ai");
+
+  const label = document.createElement("span");
+  label.textContent = (role === "user" ? "You: " : "AI: ") + text;
+  div.appendChild(label);
+  if (historyIndex !== null) {
+    const selectionBox = document.createElement("input");
+    selectionBox.type = "checkbox";
+    selectionBox.className = "selectionBox";
+    selectionBox.dataset.index = historyIndex;
+    selectionBox.hidden = true;
+    div.prepend(selectionBox);
+  }
+
+  const ttsButton = document.createElement("button");
+  ttsButton.type = "button";
+  ttsButton.textContent = "🔊";
+  ttsButton.title = "Listen to this message";
+  ttsButton.addEventListener("click", () => {
+    if (!("speechSynthesis" in window)) return;
+    if (window.activeTtsButton === ttsButton) {
+      window.speechSynthesis.cancel();
+      window.activeTtsButton = null;
+      ttsButton.textContent = "🔊";
+      return;
+    }
+    window.speechSynthesis.cancel();
+    document.querySelectorAll('.msg button[title="Listen to this message"]').forEach(b => b.textContent = "🔊");
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "hi-IN";
+    window.activeTtsButton = ttsButton;
+    ttsButton.textContent = "⏹";
+    utterance.onend = utterance.onerror = () => {
+      if (window.activeTtsButton === ttsButton) {
+        window.activeTtsButton = null;
+        ttsButton.textContent = "🔊";
+      }
+    };
+    window.speechSynthesis.speak(utterance);
+  });
+  div.appendChild(ttsButton);
+
+  if (historyIndex !== null) {
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.textContent = "🗑️ Delete";
+    deleteButton.style.background = "#c62828";
+    deleteButton.addEventListener("click", async () => {
+      if (!confirm("Delete this message?")) return;
+      try {
+        const response = await fetch("/api/history/" + historyIndex, { method: "DELETE" });
+        if (!response.ok) throw new Error("Could not delete message");
+        await loadHistory();
+        statusText.textContent = "Message deleted";
+      } catch (error) {
+        statusText.textContent = "Error: " + error.message;
+      }
+    });
+    div.appendChild(deleteButton);
+  }
+
+  messages.appendChild(div);
+  messages.scrollTop = messages.scrollHeight;
+}
+
+document.getElementById("selectDelete").addEventListener("click", () => {
+  const boxes = document.querySelectorAll(".selectionBox");
+  const selecting = boxes.length > 0 && boxes[0].hidden;
+  boxes.forEach(box => box.hidden = !selecting);
+  document.getElementById("deleteSelected").hidden = !selecting;
+  document.getElementById("selectDelete").textContent =
+    selecting ? "☑️ Cancel selection" : "☑️ Select messages to delete";
+});
+
+document.getElementById("deleteSelected").addEventListener("click", async () => {
+  const indexes = [...document.querySelectorAll(".selectionBox:checked")]
+    .map(box => Number(box.dataset.index))
+    .sort((a, b) => b - a);
+  if (!indexes.length) {
+    statusText.textContent = "Pehle messages select karo.";
+    return;
+  }
+  if (!confirm(indexes.length + " selected messages delete karein?")) return;
+  try {
+    for (const index of indexes) {
+      const res = await fetch("/api/history/" + index, { method: "DELETE" });
+      if (!res.ok) throw new Error("Delete failed");
+    }
+    await loadHistory();
+    document.getElementById("deleteSelected").hidden = true;
+    document.getElementById("selectDelete").textContent = "☑️ Select messages to delete";
+    statusText.textContent = "Selected messages deleted";
+  } catch (error) {
+    statusText.textContent = "Error: " + error.message;
+  }
+});
+
+async function loadHistory() {
+  try {
+    const res = await fetch("/api/history");
+    const history = await res.json();
+    messages.innerHTML = "";
+    history.forEach((item, index) => addMessage(item.role, item.content, index));
+  } catch {
+    statusText.textContent = "Could not load history";
+  }
+}
+
+document.getElementById("form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const input = document.getElementById("message");
+  const message = input.value.trim();
+  const photo = document.getElementById("photo").files[0];
+  if (!message) return;
+  let image = "";
+  if (photo) {
+    if (photo.size > 5 * 1024 * 1024) {
+      statusText.textContent = "Photo 5 MB se chhoti honi chahiye.";
+      return;
+    }
+    image = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(photo);
+    });
+  }
+  addMessage("user", message);
+  input.value = "";
+  document.getElementById("photo").value = "";
+  statusText.textContent = "AI is thinking...";
+  try {
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({message, image})
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Request failed");
+    addMessage("assistant", data.answer);
+    statusText.textContent = "Reply received";
+  } catch (error) {
+    statusText.textContent = "Error: " + error.message;
+  }
+});
+
+document.getElementById("delete").addEventListener("click", async () => {
+  if (!confirm("Delete all saved chat history?")) return;
+  try {
+    const res = await fetch("/api/history", {method: "DELETE"});
+    if (!res.ok) throw new Error("Could not delete history");
+    messages.innerHTML = "";
+    statusText.textContent = "Chat history deleted";
+  } catch (error) {
+    statusText.textContent = "Error: " + error.message;
+  }
+});
+
+loadHistory();
+
+const voiceBtn = document.getElementById('voiceBtn');
+
+if (voiceBtn) {
+  voiceBtn.addEventListener('click', () => {
+    const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!Speech) {
+      alert('Voice input is not supported in this browser. Try Chrome.');
+      return;
+    }
+
+    const recognition = new Speech();
+    recognition.lang = 'hi-IN';
+    recognition.interimResults = false;
+    recognition.onresult = (event) => {
+      document.getElementById('message').value =
+        event.results[0][0].transcript;
+    };
+    recognition.onerror = () => alert('Mic error. Check microphone permission.');
+    recognition.start();
+  });
+}
+
+
+/* AugustLiveTalk */
+(() => {
+  const btn = document.getElementById("liveTalkBtn");
+  const status = document.getElementById("status");
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  if (!btn) return;
+  let active = false, busy = false, recognition = null;
+
+  btn.addEventListener("click", () => {
+    if (active) {
+      active = false;
+      busy = false;
+      if (recognition) recognition.abort();
+      window.speechSynthesis.cancel();
+      btn.textContent = "🎙️ Live Talk";
+      status.textContent = "Live Talk stopped";
+      return;
+    }
+
+    if (!SpeechRecognition) {
+      status.textContent = "Live Talk ke liye Chrome browser use karo.";
+      return;
+    }
+
+    active = true;
+    btn.textContent = "⏹️ Stop Talk";
+    status.textContent = "Listening... permission allow karo.";
+
+    recognition = new SpeechRecognition();
+    recognition.lang = "hi-IN";
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
+    recognition.onresult = async (event) => {
+      const spoken = event.results[event.results.length - 1][0].transcript.trim();
+      if (!spoken || busy || !active) return;
+      busy = true;
+      status.textContent = "August AI is thinking...";
+      addMessage("user", spoken);
+
+      try {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: spoken })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Request failed");
+        addMessage("assistant", data.answer);
+        status.textContent = "August AI is speaking...";
+
+        await new Promise(resolve => {
+          const utterance = new SpeechSynthesisUtterance(data.answer);
+          utterance.lang = /[\u0900-\u097F]/.test(data.answer) ? "hi-IN" : "en-IN";
+          utterance.onend = resolve;
+          utterance.onerror = resolve;
+          window.speechSynthesis.speak(utterance);
+        });
+      } catch (error) {
+        status.textContent = "Error: " + error.message;
+      } finally {
+        busy = false;
+        if (active) {
+          status.textContent = "Listening... bolo.";
+          setTimeout(() => {
+            if (active && !busy) {
+              try { recognition.start(); } catch {}
+            }
+          }, 350);
+        }
+      }
+    };
+
+    recognition.onerror = (event) => {
+      if (active && event.error !== "aborted" && event.error !== "no-speech") {
+        status.textContent = "Mic error: " + event.error;
+      }
+    };
+
+    recognition.onend = () => {
+      if (active && !busy) {
+        setTimeout(() => {
+          if (active && !busy) {
+            try { recognition.start(); } catch {}
+          }
+        }, 500);
+      }
+    };
+
+    try { recognition.start(); }
+    catch (error) {
+      active = false;
+      btn.textContent = "🎙️ Live Talk";
+      status.textContent = "Mic start nahi hua: " + error.message;
+    }
+  });
+})();
+
+</script>
+
+<script>
+document.addEventListener('click', function(e) {
+  const target = e.target.closest('[data-speak]');
+  if (!target) return;
+  if (!('speechSynthesis' in window)) {
+    alert('Speech playback is not supported in this browser.');
+    return;
+  }
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(target.dataset.speak);
+  utterance.lang = 'hi-IN';
+  window.speechSynthesis.speak(utterance);
+});
+</script>
+
+</body>
+</html>
