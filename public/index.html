@@ -90,15 +90,65 @@ button{padding:12px;border:0;border-radius:8px;background:#1769e0;color:white}
 #liveTalkBtn{background:#e8f5ec!important;color:#176b3a!important;font-size:12px!important}
 #form button[type=submit]{background:#171717!important;color:white!important}
 
-</style>
+
+/* AUGUST AI DARK MINIMAL THEME */
+body{background:#08090b!important;color:#e5e7eb!important}
+main{background:#111316!important;color:#e5e7eb!important;border:1px solid #30343a!important}
+h2{color:#00e5ff!important;text-shadow:0 0 12px #00e5ff55;letter-spacing:2px}
+#messages{background:#0b0d10!important;border:1px solid #30343a!important}
+.msg{color:#e5e7eb!important}
+.user{background:#20252c!important;border:1px solid #343b44!important}
+.ai{background:#151a20!important;border:1px solid #303b43!important}
+#status{color:#00d9ef!important}
+#form{background:#171a1f!important;border:1px solid #343b44!important;box-shadow:none!important}
+#message{background:#20242a!important;color:white!important;border:1px solid #343b44!important}
+#message::placeholder{color:#929ba5!important}
+#voiceLanguage{background:#20242a!important;color:#e5e7eb!important}
+#form button,#photoBtn,#voiceBtn,#liveTalkBtn{background:#252a30!important;color:#00e5ff!important;border:1px solid #00bcd4!important}
+#form button[type=submit]{background:#00bcd4!important;color:#08090b!important}
+.msg button[title="Listen to this message"]{background:#202a30!important;color:#00e5ff!important;border-color:#00bcd4!important}
+#delete{background:#7f252d!important;color:white!important}
+
+
+#authPanel{max-width:360px;margin:24px auto;padding:20px;background:#151a20;border:1px solid #00bcd4;border-radius:14px}
+#authPanel input{box-sizing:border-box;width:100%;padding:13px;margin:8px 0;background:#20242a;color:white;border:1px solid #343b44;border-radius:8px}
+#authPanel button{padding:11px;margin-top:10px;background:#202a30;color:#00e5ff;border:1px solid #00bcd4;border-radius:8px}
+#authPanel p{color:#00d9ef}
+\n</style>
 </head>
 <body>
 <main>
 <h2>August AI</h2>
+<div id="authPanel">
+<h3 style="color:#00e5ff">Welcome to August AI</h3>
+<form id="authForm">
+<input id="authEmail" type="email" placeholder="Email address" autocomplete="email" required>
+<input id="authPassword" type="password" placeholder="Password (minimum 6 characters)" minlength="6" autocomplete="current-password" required>
+<button id="authSubmit" type="submit">Login</button>
+</form>
+<button id="authToggle" type="button">Create new account</button>
+<p id="authStatus">Login to continue</p>
+</div>
+<div id="chatArea" hidden>
 <div id="messages"></div>
 <p id="status">Ready to chat</p>
 <form id="form">
 <input id="message" placeholder="Type your message..." autocomplete="off" required>
+<select id="voiceLanguage" aria-label="Voice language">
+<option value="en-IN" selected>English</option>
+<option value="hi-IN">Hindi</option>
+<option value="bn-IN">Bengali</option>
+<option value="mr-IN">Marathi</option>
+<option value="ta-IN">Tamil</option>
+<option value="te-IN">Telugu</option>
+<option value="ur-PK">Urdu</option>
+<option value="fr-FR">French</option>
+<option value="es-ES">Spanish</option>
+<option value="de-DE">German</option>
+<option value="ar-SA">Arabic</option>
+<option value="ja-JP">Japanese</option>
+<option value="zh-CN">Chinese</option>
+</select>
 <input id="photo" type="file" accept="image/*" hidden>
 <button type="button" id="photoBtn" title="Attach photo">📎</button>
 <button type="button" id="voiceBtn">🎤</button>
@@ -109,9 +159,73 @@ button{padding:12px;border:0;border-radius:8px;background:#1769e0;color:white}
 <button id="selectDelete" type="button">☑️ Select messages to delete</button>
 <button id="deleteSelected" type="button" hidden>🗑️ Delete selected</button>
 <button id="delete">Delete Chat History</button>
-</main>
-<script>
+</div>\n</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>\n<script>
 const messages = document.getElementById("messages");
+
+let sb;
+let authMode = "login";
+
+(async function setupAuth() {
+  const authStatus = document.getElementById("authStatus");
+  const authPanel = document.getElementById("authPanel");
+  const chatArea = document.getElementById("chatArea");
+  try {
+    const configRes = await fetch("/api/config");
+    if (!configRes.ok) throw new Error("Could not load Supabase config");
+    const config = await configRes.json();
+    sb = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
+
+    document.getElementById("authToggle").addEventListener("click", () => {
+      authMode = authMode === "login" ? "signup" : "login";
+      document.getElementById("authSubmit").textContent = authMode === "login" ? "Login" : "Sign Up";
+      document.getElementById("authToggle").textContent = authMode === "login" ? "Create new account" : "Back to Login";
+      document.getElementById("authPassword").autocomplete = authMode === "login" ? "current-password" : "new-password";
+      authStatus.textContent = authMode === "login" ? "Login to continue" : "Create your August AI account";
+    });
+
+    document.getElementById("authForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const email = document.getElementById("authEmail").value.trim();
+      const password = document.getElementById("authPassword").value;
+      authStatus.textContent = "Please wait...";
+      const result = authMode === "signup"
+        ? await sb.auth.signUp({ email, password })
+        : await sb.auth.signInWithPassword({ email, password });
+
+      if (result.error) {
+        authStatus.textContent = result.error.message;
+      } else if (authMode === "signup" && !result.data.session) {
+        authStatus.textContent = "Account created. Please verify your email, then login.";
+      } else {
+        authStatus.textContent = "Login successful";
+      }
+    });
+
+    async function showSession(session) {
+      authPanel.hidden = !!session;
+      chatArea.hidden = !session;
+      if (session) await loadHistory();
+    }
+
+    sb.auth.onAuthStateChange((_event, session) => {
+      showSession(session);
+    });
+
+    const { data } = await sb.auth.getSession();
+    await showSession(data.session);
+  } catch (error) {
+    authStatus.textContent = "Auth setup error: " + error.message;
+  }
+})();
+
+async function apiFetch(url, options = {}) {
+  const { data } = await sb.auth.getSession();
+  if (!data.session) throw new Error("Please login first");
+  const headers = new Headers(options.headers || {});
+  headers.set("Authorization", "Bearer " + data.session.access_token);
+  return fetch(url, { ...options, headers });
+}
 document.getElementById("photoBtn")?.addEventListener("click", () => {
     document.getElementById("photo").click();
   });
@@ -124,12 +238,69 @@ document.getElementById("photoBtn")?.addEventListener("click", () => {
   });
 const statusText = document.getElementById("status");
 
+function cleanSpeechText(text) {
+  return String(text)
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/\*(.*?)\*/g, "$1")
+    .replace(/[\`#_~]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+
+function markdownToHtml(value) {
+  const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  const inline = s => esc(s)
+    .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*(.*?)\*/g, "<em>$1</em>")
+    .replace(/`(.*?)`/g, "<code>$1</code>");
+
+  const lines = String(value || "").split(/\r?\n/);
+  let out = [], list = false, table = false;
+
+  function closeList() {
+    if (list) { out.push("</ul>"); list = false; }
+  }
+  function closeTable() {
+    if (table) { out.push("</table>"); table = false; }
+  }
+
+  for (const line of lines) {
+    const t = line.trim();
+    if (!t) { closeList(); closeTable(); continue; }
+
+    if (/^\|?\s*:?-{3,}/.test(t)) continue;
+
+    if (t.includes("|")) {
+      closeList();
+      if (!table) { out.push('<table class="md-table">'); table = true; }
+      const cells = t.replace(/^\||\|$/g, "").split("|");
+      out.push("<tr>" + cells.map(c => "<td>" + inline(c.trim()) + "</td>").join("") + "</tr>");
+      continue;
+    }
+
+    closeTable();
+    if (/^[-*]\s+/.test(t)) {
+      if (!list) { out.push("<ul>"); list = true; }
+      out.push("<li>" + inline(t.replace(/^[-*]\s+/, "")) + "</li>");
+    } else {
+      closeList();
+      const h = t.match(/^#{1,3}\s+(.*)$/);
+      out.push(h ? "<h3>" + inline(h[1]) + "</h3>" : "<p>" + inline(t) + "</p>");
+    }
+  }
+  closeList();
+  closeTable();
+  return out.join("");
+}
+
 function addMessage(role, text, historyIndex = null) {
+  text = String(text || "").replace(/^\s*\|[\s|:-]+\|\s*$/gm, "").trim();
   const div = document.createElement("div");
   div.className = "msg " + (role === "user" ? "user" : "ai");
 
   const label = document.createElement("span");
-  label.textContent = (role === "user" ? "You: " : "AI: ") + text;
+  label.innerHTML = (role === "user" ? "You: " : "AI: ") + (role === "user" ? markdownToHtml(text) : markdownToHtml(text));
   div.appendChild(label);
   if (historyIndex !== null) {
     const selectionBox = document.createElement("input");
@@ -154,8 +325,9 @@ function addMessage(role, text, historyIndex = null) {
     }
     window.speechSynthesis.cancel();
     document.querySelectorAll('.msg button[title="Listen to this message"]').forEach(b => b.textContent = "🔊");
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "hi-IN";
+    const utterance = new SpeechSynthesisUtterance(cleanSpeechText(text));
+    utterance.lang = document.getElementById('voiceLanguage').value;
+          utterance.rate = 1.08;
     window.activeTtsButton = ttsButton;
     ttsButton.textContent = "⏹";
     utterance.onend = utterance.onerror = () => {
@@ -169,22 +341,7 @@ function addMessage(role, text, historyIndex = null) {
   div.appendChild(ttsButton);
 
   if (historyIndex !== null) {
-    const deleteButton = document.createElement("button");
-    deleteButton.type = "button";
-    deleteButton.textContent = "🗑️ Delete";
-    deleteButton.style.background = "#c62828";
-    deleteButton.addEventListener("click", async () => {
-      if (!confirm("Delete this message?")) return;
-      try {
-        const response = await fetch("/api/history/" + historyIndex, { method: "DELETE" });
-        if (!response.ok) throw new Error("Could not delete message");
-        await loadHistory();
-        statusText.textContent = "Message deleted";
-      } catch (error) {
-        statusText.textContent = "Error: " + error.message;
-      }
-    });
-    div.appendChild(deleteButton);
+
   }
 
   messages.appendChild(div);
@@ -211,7 +368,7 @@ document.getElementById("deleteSelected").addEventListener("click", async () => 
   if (!confirm(indexes.length + " selected messages delete karein?")) return;
   try {
     for (const index of indexes) {
-      const res = await fetch("/api/history/" + index, { method: "DELETE" });
+      const res = await apiFetch("/api/history/" + index, { method: "DELETE" });
       if (!res.ok) throw new Error("Delete failed");
     }
     await loadHistory();
@@ -225,7 +382,7 @@ document.getElementById("deleteSelected").addEventListener("click", async () => 
 
 async function loadHistory() {
   try {
-    const res = await fetch("/api/history");
+    const res = await apiFetch("/api/history");
     const history = await res.json();
     messages.innerHTML = "";
     history.forEach((item, index) => addMessage(item.role, item.content, index));
@@ -246,8 +403,8 @@ document.getElementById("form").addEventListener("submit", async event => {
   if (!message && photo) message = "Is photo ko dekho aur batao ismein kya hai.";
   let image = "";
   if (photo) {
-    if (photo.size > 5 * 1024 * 1024) {
-      statusText.textContent = "Photo 5 MB se chhoti honi chahiye.";
+    if (photo.size > 10 * 1024 * 1024) {
+      statusText.textContent = "Photo 10 MB se chhoti honi chahiye.";
       return;
     }
     image = await new Promise((resolve, reject) => {
@@ -262,7 +419,7 @@ document.getElementById("form").addEventListener("submit", async event => {
   document.getElementById("photo").value = "";
   statusText.textContent = "AI is thinking...";
   try {
-    const res = await fetch("/api/chat", {
+    const res = await apiFetch("/api/chat", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({message, image})
@@ -279,7 +436,7 @@ document.getElementById("form").addEventListener("submit", async event => {
 document.getElementById("delete").addEventListener("click", async () => {
   if (!confirm("Delete all saved chat history?")) return;
   try {
-    const res = await fetch("/api/history", {method: "DELETE"});
+    const res = await apiFetch("/api/history", {method: "DELETE"});
     if (!res.ok) throw new Error("Could not delete history");
     messages.innerHTML = "";
     statusText.textContent = "Chat history deleted";
@@ -288,7 +445,6 @@ document.getElementById("delete").addEventListener("click", async () => {
   }
 });
 
-loadHistory();
 
 const voiceBtn = document.getElementById('voiceBtn');
 
@@ -302,7 +458,7 @@ if (voiceBtn) {
     }
 
     const recognition = new Speech();
-    recognition.lang = 'hi-IN';
+    recognition.lang = document.getElementById('voiceLanguage').value;
     recognition.interimResults = false;
     recognition.onresult = (event) => {
       document.getElementById('message').value =
@@ -344,7 +500,7 @@ if (voiceBtn) {
     status.textContent = "Listening... permission allow karo.";
 
     recognition = new SpeechRecognition();
-    recognition.lang = "hi-IN";
+    recognition.lang = document.getElementById('voiceLanguage').value;
     recognition.continuous = false;
     recognition.interimResults = false;
 
@@ -356,19 +512,25 @@ if (voiceBtn) {
       addMessage("user", spoken);
 
       try {
-        const res = await fetch("/api/chat", {
+        const res = await apiFetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ message: spoken })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Request failed");
-        addMessage("assistant", data.answer);
+
+        const answer = String(data.answer || data.reply || "").replace(/^\s*\|[\s|:-]+\|\s*$/gm, "").trim();
+        if (!answer) throw new Error("AI ka answer blank hai.");
+
+        addMessage("assistant", answer);
         status.textContent = "August AI is speaking...";
+        window.speechSynthesis.cancel();
 
         await new Promise(resolve => {
-          const utterance = new SpeechSynthesisUtterance(data.answer);
-          utterance.lang = /[\u0900-\u097F]/.test(data.answer) ? "hi-IN" : "en-IN";
+          const utterance = new SpeechSynthesisUtterance(cleanSpeechText(answer));
+          utterance.lang = document.getElementById('voiceLanguage').value;
+          utterance.rate = 1.08;
           utterance.onend = resolve;
           utterance.onerror = resolve;
           window.speechSynthesis.speak(utterance);
@@ -381,9 +543,20 @@ if (voiceBtn) {
           status.textContent = "Listening... bolo.";
           setTimeout(() => {
             if (active && !busy) {
-              try { recognition.start(); } catch {}
+              try {
+                recognition.start();
+              } catch (error) {
+                setTimeout(() => {
+                  if (active && !busy) {
+                    try { recognition.start(); }
+                    catch (retryError) {
+                      status.textContent = "Mic restart nahi hua. Live Talk dobara start karo.";
+                    }
+                  }
+                }, 700);
+              }
             }
-          }, 350);
+          }, 700);
         }
       }
     };
@@ -424,8 +597,9 @@ document.addEventListener('click', function(e) {
     return;
   }
   window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(target.dataset.speak);
-  utterance.lang = 'hi-IN';
+  const utterance = new SpeechSynthesisUtterance(cleanSpeechText(target.dataset.speak));
+  utterance.lang = document.getElementById('voiceLanguage').value;
+          utterance.rate = 1.08;
   window.speechSynthesis.speak(utterance);
 });
 </script>

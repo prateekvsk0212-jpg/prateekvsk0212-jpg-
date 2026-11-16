@@ -7,3 +7,24 @@ history.json
 *.before-speech
 *.pre-tts
 *.voice-backup
+founder-profile.json
+private-backup/
+
+# August AI local backups and logs
+backup/
+recovery-safety/
+error.log
+*.before-*
+*-before-*
+*server.js
+*.safe-backup
+*.language-backup
+
+.env
+.env.*
+node_modules/
+history.json
+error.log
+*.backup
+*.tar.gz
+*.voice-backup*

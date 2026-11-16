@@ -1,45 +1,86 @@
 import "dotenv/config";
 import express from "express";
 import OpenAI from "openai";
+import { createClient } from "@supabase/supabase-js";
 import { readFile, writeFile } from "node:fs/promises";
 
 const app = express();
 const client = new OpenAI({
-  apiKey: process.env.GROQ_API_KEY,
-  baseURL: "https://api.groq.com/openai/v1"
+apiKey: process.env.GROQ_API_KEY,
+baseURL: "https://api.groq.com/openai/v1"
 });
 const HISTORY_FILE = "./history.json";
 
-app.use(express.json({ limit: "8mb" }));
+app.use(express.json({ limit: "16mb" }));
 app.use(express.static("public"));
 
-async function getHistory() {
+app.get("/api/config", (req, res) => res.json({
+  supabaseUrl: process.env.SUPABASE_URL,
+  supabaseAnonKey: process.env.SUPABASE_ANON_KEY
+}));
+
+app.use("/api", async (req, res, next) => {
   try {
-    return JSON.parse(await readFile(HISTORY_FILE, "utf8"));
+    const token = (req.headers.authorization || "").replace(/^Bearer /, "");
+    if (!token) return res.status(401).json({ error: "Please login" });
+    const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: "Bearer " + token } },
+      auth: { persistSession: false, autoRefreshToken: false }
+    });
+    const { data, error } = await db.auth.getUser(token);
+    if (error || !data.user) return res.status(401).json({ error: "Invalid session" });
+    req.user = data.user;
+    req.supabase = db;
+    next();
   } catch {
-    return [];
+    res.status(401).json({ error: "Authentication failed" });
   }
+});
+
+async function getHistory(db, userId) {
+  const { data, error } = await db.from("chat_history")
+    .select("id, role, content, created_at")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return data || [];
 }
 
 app.get("/api/history", async (req, res) => {
-  res.json(await getHistory());
+  try {
+    res.json(await getHistory(req.supabase, req.user.id));
+  } catch {
+    res.status(500).json({ error: "Could not load history" });
+  }
 });
 
 app.delete("/api/history/:index", async (req, res) => {
-  const index = Number(req.params.index);
-  const history = await getHistory();
+  try {
+    const index = Number(req.params.index);
+    if (!Number.isInteger(index) || index < 0)
+      return res.status(404).json({ error: "Message not found" });
 
-  if (!Number.isInteger(index) || index < 0 || index >= history.length) {
-    return res.status(404).json({ error: "Message not found" });
+    const { data, error } = await req.supabase.from("chat_history")
+      .select("id").eq("user_id", req.user.id)
+      .order("created_at", { ascending: true })
+      .range(index, index).maybeSingle();
+
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: "Message not found" });
+
+    const result = await req.supabase.from("chat_history")
+      .delete().eq("id", data.id).eq("user_id", req.user.id);
+    if (result.error) throw result.error;
+    res.json({ message: "Message deleted" });
+  } catch {
+    res.status(500).json({ error: "Could not delete message" });
   }
-
-  history.splice(index, 1);
-  await writeFile(HISTORY_FILE, JSON.stringify(history, null, 2));
-  res.json({ message: "Message deleted" });
 });
 
 app.delete("/api/history", async (req, res) => {
-  await writeFile(HISTORY_FILE, "[]");
+  const { error } = await req.supabase.from("chat_history")
+    .delete().eq("user_id", req.user.id);
+  if (error) return res.status(500).json({ error: "Could not clear history" });
   res.json({ message: "Chat history deleted" });
 });
 
@@ -51,26 +92,129 @@ app.post("/api/chat", async (req, res) => {
       return res.status(400).json({ error: "Message is empty" });
     }
 
-    const history = await getHistory();
+    const previousHistory = await getHistory(req.supabase, req.user.id);
+    const history = [...previousHistory, { role: "user", content: message }];
+    const currentDateTime = new Intl.DateTimeFormat("en-IN", {
+      dateStyle: "full",
+      timeStyle: "long",
+      timeZone: "Asia/Kolkata"
+    }).format(new Date());
+
+    const needsWebSearch = !image && /latest|today|current|right now|live|news|headline|weather|temperature|stock price|exchange rate|aaj|abhi|taaja|taza|khabar|samachar|mausam|vartaman|आज|अभी|ताज़ा|ताजा|खबर|समाचार|मौसम|वर्तमान/i.test(message);
+
+    const detectedLanguage = /[\u0900-\u097F]/.test(message)
+      ? "Hindi"
+      : /\b(kya|kaise|kyun|hai|hain|ho|mera|meri|mujhe|aap|tum|batao|karo|nahi|nahin|aaj|abhi)\b/i.test(message)
+        ? "Hinglish"
+        : "English";
+
+    let tavilySearchContext = "No web search requested.";
+    if (needsWebSearch) {
+      if (!process.env.TAVILY_API_KEY) {
+        throw new Error("Tavily API key is missing.");
+      }
+
+      const searchResponse = await fetch("https://api.tavily.com/search", {
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer " + process.env.TAVILY_API_KEY,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          query: message,
+          topic: "general",
+          search_depth: "basic",
+          max_results: 5,
+          include_answer: true
+        })
+      });
+
+      if (!searchResponse.ok) {
+        throw new Error("Tavily search failed with HTTP " + searchResponse.status);
+      }
+
+      const searchData = await searchResponse.json();
+      tavilySearchContext = JSON.stringify({
+        answer: searchData.answer || "",
+        results: (searchData.results || []).map(item => ({
+          title: item.title,
+          url: item.url,
+          content: item.content,
+          published_date: item.published_date
+        }))
+      });
+    }
+
     const completion = await client.chat.completions.create({
-      
-      model: req.body.image ? "qwen/qwen3.8-27b" : "openai/gpt-oss-20b",
+      model: image ? "qwen/qwen3.8-27b" : "openai/gpt-oss-20b",
+      max_completion_tokens: 3072,
+      reasoning_effort: "low",
       messages: [
-        { role: "system", content: "Your name is August AI. You were created by Prateek Agrahari (प्रतीक अग्रहरी). If asked who created you, clearly say: I was created by Prateek Agrahari (प्रतीक अग्रहरी). Be friendly, natural, concise, and empathetic. Answer in the user's language. Prefer plain text and short paragraphs. Avoid unnecessary Markdown tables, headings, asterisks, and decorative symbols. Never claim to be ChatGPT. Be honest about your capabilities." },
-        ...history,
+        { role: "system", content: `You are August AI, an advanced AI assistant created by Prateek Agrahari.
+
+IDENTITY (HIGHEST PRIORITY):
+- You are August AI, an AI chatbot created by Prateek Agrahari (प्रतीक अग्रहरी).
+- If asked who created you, answer: I was created by Prateek Agrahari.
+- Never claim that OpenAI or ChatGPT created you.
+- Never identify yourself as ChatGPT or an OpenAI assistant.
+- Never invent a company, team, launch date, or additional founders for August AI.
+- These identity rules have priority over conversation history.
+- Never invent facts about your creator or reveal private family information.
+
+INTELLIGENCE:
+- Understand the user's intent and context.
+- Reason carefully and solve complex problems.
+- Break difficult tasks into simple steps.
+- Help with education, science, mathematics, coding and research.
+- Admit uncertainty instead of guessing.
+
+COMMUNICATION:
+- Reply in the language of the current user message.
+- English = English, Hindi = Hindi, Hinglish = Hinglish.
+- Be natural, clear, respectful and concise.
+- Avoid unnecessary symbols and excessive formatting.
+
+AI ASSISTANT CAPABILITIES:
+- Help users plan, learn, research and solve problems.
+- Write, debug and explain code.
+- Help build websites and applications.
+- Understand images when image input is available.
+- Support voice conversations when available.
+- Use Tavily search results when available.
+- Never claim to have performed an action that you did not perform.
+
+PRIVACY AND SAFETY:
+- Protect user conversations and private information.
+- Never reveal passwords, API keys or tokens.
+- Ask permission before actions affecting devices or user data.
+- Be honest about your capabilities and limitations.
+- Never invent facts, sources or search results.
+
+CURRENT INDIA DATE AND TIME: ${currentDateTime}
+
+TAVILY LIVE SEARCH RESULTS:
+${tavilySearchContext}` },
+        ...previousHistory.filter(item => item.role === "user" || item.role === "assistant").slice(-8).map(item => ({ role: item.role, content: item.content })), 
         { role: "user", content: image ? [{ type: "text", text: message }, { type: "image_url", image_url: { url: image } }] : message }
       ]
     });
 
-    const answer = completion.choices[0].message.content || "";
-    history.push(
-      { role: "user", content: message },
-      { role: "assistant", content: answer }
-    );
-    await writeFile(HISTORY_FILE, JSON.stringify(history, null, 2));
+    const rawContent = completion.choices?.[0]?.message?.content;
+    if (!rawContent || !String(rawContent).trim()) {
+      await writeFile("./error.log", new Date().toISOString() + " | Empty response | " + JSON.stringify({ finish_reason: completion.choices?.[0]?.finish_reason, usage: completion.usage }) + "\n", { flag: "a" });
+      throw new Error("Groq returned an empty response");
+    }
+    const answer = String(rawContent).trim();
+    const { error: userSaveError } = await req.supabase.from("chat_history")
+      .insert({ user_id: req.user.id, role: "user", content: message });
+    if (userSaveError) throw userSaveError;
+
+    const { error: answerSaveError } = await req.supabase.from("chat_history")
+      .insert({ user_id: req.user.id, role: "assistant", content: answer });
+    if (answerSaveError) throw answerSaveError;
     res.json({ answer });
   } catch (error) {
-    console.error("Groq error:", error.status || "", error.message);
+    await writeFile("./error.log", new Date().toISOString() + " | Groq error: " + (error.status || "") + " | " + (error.message || "Unknown error") + "\n", { flag: "a" });
     res.status(500).json({
       error: "Groq connection failed. Check Termux for the error details."
     });
