@@ -122,14 +122,17 @@ h2{color:#00e5ff!important;text-shadow:0 0 12px #00e5ff55;letter-spacing:2px}
 <div id="authPanel">
 <h3 style="color:#00e5ff">Welcome to August AI</h3>
 <form id="authForm">
+<input id="authName" type="text" placeholder="Full Name" autocomplete="name" hidden>
 <input id="authEmail" type="email" placeholder="Email address" autocomplete="email" required>
 <input id="authPassword" type="password" placeholder="Password (minimum 6 characters)" minlength="6" autocomplete="current-password" required>
 <button id="authSubmit" type="submit">Login</button>
 </form>
 <button id="authToggle" type="button">Create new account</button>
+<button id="forgotPassword" type="button">Forgot Password?</button>
 <p id="authStatus">Login to continue</p>
 </div>
 <div id="chatArea" hidden>
+<button id="logoutBtn" type="button">Logout</button>
 <div id="messages"></div>
 <p id="status">Ready to chat</p>
 <form id="form">
@@ -181,6 +184,8 @@ let authMode = "login";
       document.getElementById("authSubmit").textContent = authMode === "login" ? "Login" : "Sign Up";
       document.getElementById("authToggle").textContent = authMode === "login" ? "Create new account" : "Back to Login";
       document.getElementById("authPassword").autocomplete = authMode === "login" ? "current-password" : "new-password";
+      document.getElementById("authName").hidden = authMode !== "signup";
+      document.getElementById("authName").required = authMode === "signup";
       authStatus.textContent = authMode === "login" ? "Login to continue" : "Create your August AI account";
     });
 
@@ -188,9 +193,10 @@ let authMode = "login";
       event.preventDefault();
       const email = document.getElementById("authEmail").value.trim();
       const password = document.getElementById("authPassword").value;
+      const fullName = document.getElementById("authName").value.trim();
       authStatus.textContent = "Please wait...";
       const result = authMode === "signup"
-        ? await sb.auth.signUp({ email, password })
+        ? await sb.auth.signUp({ email, password, options: { data: { full_name: fullName } } })
         : await sb.auth.signInWithPassword({ email, password });
 
       if (result.error) {
@@ -200,6 +206,19 @@ let authMode = "login";
       } else {
         authStatus.textContent = "Login successful";
       }
+    });
+
+    document.getElementById("logoutBtn").addEventListener("click", async () => {
+      authStatus.textContent = "Logging out...";
+      const { error } = await sb.auth.signOut();
+      if (error) authStatus.textContent = error.message;
+    });
+    document.getElementById("forgotPassword").addEventListener("click", async () => {
+      const email = document.getElementById("authEmail").value.trim();
+      if (!email) { authStatus.textContent = "Pehle apna email address likho."; return; }
+      authStatus.textContent = "Reset link bheja ja raha hai...";
+      const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+      authStatus.textContent = error ? error.message : "Agar account maujood hai, password reset link email par bhej diya gaya hai.";
     });
 
     async function showSession(session) {

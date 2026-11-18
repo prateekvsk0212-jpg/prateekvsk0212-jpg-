@@ -103,6 +103,9 @@ app.post("/api/chat", async (req, res) => {
       timeZone: "Asia/Kolkata"
     }).format(new Date());
 
+    const isNewsSearch = /news|headline|khabar|samachar|खबर|समाचार/i.test(message);
+    const isTodaySearch = /today|aaj|आज/i.test(message);
+
     const needsWebSearch = !image && /latest|today|current|right now|live|news|headline|weather|temperature|stock price|exchange rate|aaj|abhi|taaja|taza|khabar|samachar|mausam|vartaman|आज|अभी|ताज़ा|ताजा|खबर|समाचार|मौसम|वर्तमान/i.test(message);
 
     const detectedLanguage = /[\u0900-\u097F]/.test(message)
@@ -125,7 +128,8 @@ app.post("/api/chat", async (req, res) => {
         },
         body: JSON.stringify({
           query: message,
-          topic: "general",
+          topic: isNewsSearch ? "news" : "general",
+          ...(isTodaySearch && isNewsSearch ? { time_range: "day" } : {}),
           search_depth: "basic",
           max_results: 5,
           include_answer: true
@@ -148,6 +152,9 @@ app.post("/api/chat", async (req, res) => {
       });
     }
 
+    const ownerEmails = String(process.env.OWNER_EMAILS || "").split(",").map(e => e.trim().toLowerCase()).filter(Boolean);
+    const isOwner = ownerEmails.includes(String(req.user.email || "").trim().toLowerCase());
+    const userName = String(req.user.user_metadata?.full_name || "").trim();
     const completion = await client.chat.completions.create({
       model: image ? "qwen/qwen3.8-27b" : "openai/gpt-oss-20b",
       max_completion_tokens: 3072,
@@ -162,6 +169,10 @@ IDENTITY (HIGHEST PRIORITY):
 - Never identify yourself as ChatGPT or an OpenAI assistant.
 - Never invent a company, team, launch date, or additional founders for August AI.
 - These identity rules have priority over conversation history.
+- CURRENT USER: ${isOwner ? "Address this user as Boss." : "Address this user by their signup name when available; never call them Boss."}
+- USER NAME: ${userName || "Not provided"}
+- If anyone asks who created or founded August AI, answer: Prateek Agrahari. This is true for all users.
+- Answer questions about ChatGPT and OpenAI with accurate facts. Never claim Prateek Agrahari created ChatGPT.
 - Never invent facts about your creator or reveal private family information.
 
 INTELLIGENCE:
@@ -220,7 +231,7 @@ ${tavilySearchContext}` },
     await writeFile("./error.log", new Date().toISOString() + " | Groq error: " + (error.status || "") + " | " + (error.message || "Unknown error") + "\n", { flag: "a" });
     console.error("AUGUST AI ERROR:", error.status || "", error.message || "Unknown error");
     res.status(500).json({
-      error: "Groq connection failed. Check Termux for the error details."
+      error: String(error.message || "").toLowerCase().includes("tavily") ? "News search failed. Check the Tavily API key in Render." : "AI response failed. Check Render logs."
     });
   }
 });
