@@ -50,6 +50,7 @@ app.get("/api/history", async (req, res) => {
   try {
     res.json(await getHistory(req.supabase, req.user.id));
   } catch {
+    console.error("AUGUST AI ERROR:", error.status || "", error.message || "Unknown error");
     res.status(500).json({ error: "Could not load history" });
   }
 });
@@ -73,6 +74,7 @@ app.delete("/api/history/:index", async (req, res) => {
     if (result.error) throw result.error;
     res.json({ message: "Message deleted" });
   } catch {
+    console.error("AUGUST AI ERROR:", error.status || "", error.message || "Unknown error");
     res.status(500).json({ error: "Could not delete message" });
   }
 });
@@ -80,6 +82,7 @@ app.delete("/api/history/:index", async (req, res) => {
 app.delete("/api/history", async (req, res) => {
   const { error } = await req.supabase.from("chat_history")
     .delete().eq("user_id", req.user.id);
+    console.error("AUGUST AI ERROR:", error.status || "", error.message || "Unknown error");
   if (error) return res.status(500).json({ error: "Could not clear history" });
   res.json({ message: "Chat history deleted" });
 });
@@ -215,6 +218,7 @@ ${tavilySearchContext}` },
     res.json({ answer });
   } catch (error) {
     await writeFile("./error.log", new Date().toISOString() + " | Groq error: " + (error.status || "") + " | " + (error.message || "Unknown error") + "\n", { flag: "a" });
+    console.error("AUGUST AI ERROR:", error.status || "", error.message || "Unknown error");
     res.status(500).json({
       error: "Groq connection failed. Check Termux for the error details."
     });
