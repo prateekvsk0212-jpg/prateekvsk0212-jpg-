@@ -114,7 +114,7 @@ h2{color:#00e5ff!important;text-shadow:0 0 12px #00e5ff55;letter-spacing:2px}
 #authPanel input{box-sizing:border-box;width:100%;padding:13px;margin:8px 0;background:#20242a;color:white;border:1px solid #343b44;border-radius:8px}
 #authPanel button{padding:11px;margin-top:10px;background:#202a30;color:#00e5ff;border:1px solid #00bcd4;border-radius:8px}
 #authPanel p{color:#00d9ef}
-\n</style>
+</style>
 </head>
 <body>
 <main>
@@ -162,8 +162,8 @@ h2{color:#00e5ff!important;text-shadow:0 0 12px #00e5ff55;letter-spacing:2px}
 <button id="selectDelete" type="button">☑️ Select messages to delete</button>
 <button id="deleteSelected" type="button" hidden>🗑️ Delete selected</button>
 <button id="delete">Delete Chat History</button>
-</div>\n</main>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>\n<script>
+</div></main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script>
 const messages = document.getElementById("messages");
 
 let sb;
@@ -191,21 +191,31 @@ let authMode = "login";
 
     document.getElementById("authForm").addEventListener("submit", async (event) => {
       event.preventDefault();
-      const email = document.getElementById("authEmail").value.trim();
+      const email = document.getElementById("authEmail").value.trim().toLowerCase();
       const password = document.getElementById("authPassword").value;
       const fullName = document.getElementById("authName").value.trim();
       authStatus.textContent = "Please wait...";
-      const result = authMode === "signup"
-        ? await sb.auth.signUp({ email, password, options: { data: { full_name: fullName } } })
-        : await sb.auth.signInWithPassword({ email, password });
-
-      if (result.error) {
-        authStatus.textContent = result.error.message;
-      } else if (authMode === "signup" && !result.data.session) {
-        authStatus.textContent = "Account created. Please verify your email, then login.";
-      } else {
-        authStatus.textContent = "Login successful";
+      if (authMode === "signup" && !fullName) {
+        authStatus.textContent = "Please enter your full name.";
+        return;
       }
+      try {
+        const result = authMode === "signup"
+          ? await sb.auth.signUp({ email, password, options: { data: { full_name: fullName } } })
+          : await sb.auth.signInWithPassword({ email, password });
+        if (result.error) {
+          authStatus.textContent = /invalid login credentials/i.test(result.error.message || "") ? "Email ya password sahi nahi hai. Dobara try karein." : (result.error.message || "Login failed. Dobara try karein.");
+        } else if (authMode === "signup" && !result.data.session) {
+          authStatus.textContent = "Account created. Verify your email, then login.";
+        } else {
+          authStatus.textContent = "Login successful";
+        }
+      } catch (error) {
+        authStatus.textContent = error.message || "Login failed. Please try again.";
+      }
+      return;
+
+
     });
 
     document.getElementById("logoutBtn").addEventListener("click", async () => {
@@ -213,12 +223,24 @@ let authMode = "login";
       const { error } = await sb.auth.signOut();
       if (error) authStatus.textContent = error.message;
     });
+
     document.getElementById("forgotPassword").addEventListener("click", async () => {
-      const email = document.getElementById("authEmail").value.trim();
-      if (!email) { authStatus.textContent = "Pehle apna email address likho."; return; }
+      const email = document.getElementById("authEmail").value.trim().toLowerCase();
+      if (!email) {
+        authStatus.textContent = "Pehle apna email address likho.";
+        return;
+      }
       authStatus.textContent = "Reset link bheja ja raha hai...";
-      const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
-      authStatus.textContent = error ? error.message : "Agar account maujood hai, password reset link email par bhej diya gaya hai.";
+      try {
+        const { error } = await sb.auth.resetPasswordForEmail(email, {
+          redirectTo: window.location.origin
+        });
+        authStatus.textContent = error
+          ? "Reset email nahi bheja ja saka. Dobara try karein."
+          : "Agar account maujood hai, reset link email par bhej diya gaya hai.";
+      } catch (error) {
+        authStatus.textContent = "Reset request fail hui. Dobara try karein.";
+      }
     });
 
     async function showSession(session) {
